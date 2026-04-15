@@ -67,7 +67,7 @@ export default function RiderDashboardPage() {
           Rider Dashboard
         </p>
         <h1 style={{ margin: 0, fontSize: 32, fontWeight: 700, lineHeight: 1.2 }}>
-          Where to today?
+          Your Safe Ride Awaits
         </h1>
         <p style={{ margin: "10px 0 0", color: colors.textSecondary, fontSize: 15 }}>
           Book a safe, reliable designated driver in minutes.
