@@ -59,7 +59,7 @@ server.use("/api/trips", incidentRoutes);
 
 const port = process.env.PORT || 3000;
 
-server.get("/api/status", (req, res) => {
+server.get("/api/status", (_req, res) => {
   res.status(200).json({
     success: true,
     message: "Designated Driving Server is running",
