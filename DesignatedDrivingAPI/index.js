@@ -28,7 +28,7 @@ server.use(
       "http://localhost:5174",
       process.env.CLIENT_URL,
       "https://deploy-preview-24--drivly-project.netlify.app",
-    ],
+    ].filter(Boolean),
     credentials: true,
   }),
 );
