@@ -2,6 +2,9 @@
 import { connectDB } from "./src/config/db.js";
 import "dotenv/config";
 import express from "express";
+import { createRequire } from "module";
+const require = createRequire(import.meta.url);
+const { version } = require("./package.json");
 import cors from "cors";
 import authRoutes from "./src/routes/auth.route.js";
 import vehicleRoutes from "./src/routes/vehicle.route.js";
@@ -58,10 +61,18 @@ const port = process.env.PORT || 3000;
 
 server.use("/api/auth", authRoutes);
 
-server.get("/api/status", (req, res) => {
+server.get("/api/status", (_req, res) => {
   res.status(200).json({
     success: true,
     message: "Designated Driving Server is running",
+  });
+});
+
+server.get("/api/version", (_req, res) => {
+  res.status(200).json({
+    version,
+    name: "Designated Driving API",
+    environment: process.env.NODE_ENV || "development",
   });
 });
 
