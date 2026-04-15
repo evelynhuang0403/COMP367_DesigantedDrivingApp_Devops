@@ -68,11 +68,12 @@ server.get("/api/status", (_req, res) => {
   });
 });
 
-server.get("/api/version", (_req, res) => {
+server.get("/api/health", (_req, res) => {
   res.status(200).json({
-    version,
-    name: "Designated Driving API",
-    environment: process.env.NODE_ENV || "development",
+    status: "healthy",
+    uptime: process.uptime(),
+    memory: process.memoryUsage(),
+    timestamp: new Date().toISOString(),
   });
 });
 
