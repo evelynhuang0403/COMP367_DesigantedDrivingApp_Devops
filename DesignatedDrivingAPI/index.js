@@ -62,7 +62,7 @@ const port = process.env.PORT || 3000;
 server.get("/api/status", (_req, res) => {
   res.status(200).json({
     success: true,
-    message: "Designated Driving Server is running",
+    message: "Designated Driving Server is up and running",
   });
 });
 
