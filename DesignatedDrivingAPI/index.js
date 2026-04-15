@@ -65,6 +65,15 @@ server.get("/api/status", (req, res) => {
   });
 });
 
+server.get("/api/health", (_req, res) => {
+  res.status(200).json({
+    status: "healthy",
+    uptime: process.uptime(),
+    memory: process.memoryUsage(),
+    timestamp: new Date().toISOString(),
+  });
+});
+
 server.listen(port, async () => {
   try {
     await connectDB();
