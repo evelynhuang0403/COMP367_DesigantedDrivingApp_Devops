@@ -77,6 +77,14 @@ server.get("/api/health", (_req, res) => {
   });
 });
 
+server.get("/api/version", (_req, res) => {
+  res.status(200).json({
+    version,
+    name: "Designated Driving API",
+    environment: process.env.NODE_ENV || "development",
+  });
+});
+
 server.listen(port, async () => {
   try {
     await connectDB();
