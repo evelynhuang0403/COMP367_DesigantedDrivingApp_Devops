@@ -1,0 +1,285 @@
+trigger:
+  - main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+# ─────────────────────────────────────────────
+# CI PIPELINE
+# ─────────────────────────────────────────────
+
+stages:
+
+  # ── SonarQube Static Analysis ──────────────
+  - stage: SonarAnalysis
+    displayName: 'SonarQube Static Code Analysis'
+    jobs:
+      - job: SonarQube
+        displayName: 'Run SonarQube Analysis'
+        steps:
+          - task: SonarCloudPrepare@4
+            displayName: 'Prepare SonarCloud Analysis'
+            inputs:
+              SonarCloud: 'SonarCloudServiceConnection'
+              organization: 'evelynhuang0403'
+              projectKey: 'evelynhuang0403_COMP313_DesigantedDrivingApp_Devops'
+              scannerMode: 'CLI'
+              configMode: 'file'
+          - task: SonarCloudAnalyze@4
+            displayName: 'Run SonarCloud Analysis'
+          - task: SonarCloudPublish@4
+            displayName: 'Publish SonarCloud Quality Gate Result'
+            inputs:
+              pollingTimeoutSec: '300'
+
+  # ── Build Stage ────────────────────────────
+  - stage: Build
+    displayName: 'Build'
+    dependsOn: SonarAnalysis
+    jobs:
+      - job: BuildAndTest
+        displayName: 'Build and Test'
+        steps:
+          - script: |
+              echo "=== Installing API dependencies ==="
+              cd DesignatedDrivingAPI
+              npm install
+              cd ..
+              echo "=== Installing Client dependencies and building ==="
+              cd DesignatedDrivingClient
+              npm install
+              npm run build
+              cd ..
+            displayName: 'Step 1 - Install dependencies and build project'
+          - script: |
+              echo "=== Running API unit tests with coverage ==="
+              cd DesignatedDrivingAPI
+              npm test
+            displayName: 'Step 2 - Run unit tests and generate coverage report'
+          - task: PublishTestResults@2
+            displayName: 'Publish Test Results'
+            condition: always()
+            inputs:
+              testResultsFormat: 'JUnit'
+              testResultsFiles: 'DesignatedDrivingAPI/coverage/*.xml'
+              failTaskOnFailedTests: true
+          - task: PublishCodeCoverageResults@2
+            displayName: 'Publish Code Coverage'
+            condition: always()
+            inputs:
+              summaryFileLocation: 'DesignatedDrivingAPI/coverage/clover.xml'
+
+# ─────────────────────────────────────────────
+# CD PIPELINE
+# ─────────────────────────────────────────────
+
+  # ── Deliver Stage ──────────────────────────
+  - stage: Deliver
+    displayName: 'Deliver - Release Artifact'
+    dependsOn: Build
+    jobs:
+      - job: PublishArtifact
+        displayName: 'Package and Publish Artifact'
+        steps:
+          - script: |
+              echo "=== Building client for release ==="
+              cd DesignatedDrivingClient
+              npm install
+              VITE_API_BASE_URL=http://localhost:8080 npm run build
+              cd ..
+            displayName: 'Build client artifact'
+          - task: ArchiveFiles@2
+            displayName: 'Archive API artifact'
+            inputs:
+              rootFolderOrFile: 'DesignatedDrivingAPI'
+              includeRootFolder: true
+              archiveType: 'zip'
+              archiveFile: '$(Build.ArtifactStagingDirectory)/api-$(Build.BuildId).zip'
+              replaceExistingArchive: true
+              excludePaths: 'DesignatedDrivingAPI/node_modules'
+          - task: ArchiveFiles@2
+            displayName: 'Archive Client artifact'
+            inputs:
+              rootFolderOrFile: 'DesignatedDrivingClient/dist'
+              includeRootFolder: false
+              archiveType: 'zip'
+              archiveFile: '$(Build.ArtifactStagingDirectory)/client-$(Build.BuildId).zip'
+              replaceExistingArchive: true
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish artifacts to pipeline'
+            inputs:
+              PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+              ArtifactName: 'drop'
+              publishLocation: 'Container'
+
+  # ── Deploy to Dev Env ───────────────────────
+  - stage: DeployDev
+    displayName: 'Deploy to Dev Environment'
+    dependsOn: Deliver
+    jobs:
+      - job: DeployDev
+        displayName: 'Deploy to Dev'
+        pool:
+          name: 'Test Agent'                               # self-hosted Windows 11 agent
+        steps:
+          - task: DownloadBuildArtifacts@1
+            displayName: 'Download build artifacts'
+            inputs:
+              buildType: 'current'
+              downloadType: 'single'
+              artifactName: 'drop'
+              downloadPath: '$(System.ArtifactsDirectory)'
+
+          - powershell: |
+              Write-Host "=== Deploying API ==="
+
+              $deployRoot = "C:\deploy\api-dev"
+              $appPath = Join-Path $deployRoot "DesignatedDrivingAPI"
+              $apiZip = "$(System.ArtifactsDirectory)\drop\api-$(Build.BuildId).zip"
+              $node = (Get-Command node).Source
+
+              # Stop and remove existing service (ignore errors if not exist)
+              cmd /c "sc stop designated-driving-api 2>nul"
+              cmd /c "sc delete designated-driving-api 2>nul"
+              $global:LASTEXITCODE = 0
+              Start-Sleep -Seconds 3
+
+              # Extract API artifact and install dependencies
+              Write-Host "=== Extracting API artifact to $deployRoot ==="
+              New-Item -ItemType Directory -Force -Path $deployRoot | Out-Null
+              Expand-Archive -Path $apiZip -DestinationPath $deployRoot -Force
+              Set-Location $appPath
+              Write-Host "=== Installing API dependencies ==="
+              npm install --omit=dev
+
+              # Register API as a Windows service via NSSM
+              New-Item -ItemType Directory -Force -Path "C:\deploy\logs" | Out-Null
+              nssm install designated-driving-api "$node" "index.js"
+              nssm set designated-driving-api AppDirectory "$appPath"
+              nssm set designated-driving-api AppStdout "C:\deploy\logs\api-stdout.log"
+              nssm set designated-driving-api AppStderr "C:\deploy\logs\api-stderr.log"
+              nssm set designated-driving-api AppEnvironmentExtra `
+                "MONGO_URI=$(MONGO_URI)" `
+                "JWT_SECRET=$(JWT_SECRET)" `
+                "PORT=8080" `
+                "CLIENT_URL=http://localhost:5000" `
+                "NODE_ENV=development" `
+                "OSRM_BASE_URL=https://router.project-osrm.org" `
+                "ESTIMATE_TTL_MINUTES=10" `
+                "CURRENCY=CAD" `
+                "FARE_BASE=5" `
+                "FARE_PER_KM=1.25" `
+                "FARE_PER_MIN=0.35" `
+                "FARE_MINIMUM=8" `
+                "GEOCODE_USER_AGENT=$(GEOCODE_USER_AGENT)"
+              cmd /c "sc start designated-driving-api 2>nul"
+              $global:LASTEXITCODE = 0
+              Start-Sleep -Seconds 8
+
+              $tc = Test-NetConnection -ComputerName localhost -Port 8080
+              if ($tc.TcpTestSucceeded) {
+                Write-Host "=== API is running on localhost:8080 ==="
+              } else {
+                Write-Host "=== API stderr log ==="
+                Get-Content "C:\deploy\logs\api-stderr.log" -ErrorAction SilentlyContinue
+                Write-Host "=== API stdout log ==="
+                Get-Content "C:\deploy\logs\api-stdout.log" -ErrorAction SilentlyContinue
+                Write-Error "API not listening on port 8080"
+                exit 1
+              }
+            displayName: 'Deploy API'
+
+          - powershell: |
+              Write-Host "=== Deploying Client ==="
+
+              $deployRoot = "C:\deploy\client-dev"
+              $clientZip = "$(System.ArtifactsDirectory)\drop\client-$(Build.BuildId).zip"
+              $node = (Get-Command node).Source
+              $httpServer = "$(npm root -g)\http-server\bin\http-server"
+              Write-Host "http-server path: $httpServer"
+
+              # Stop and remove existing service (ignore errors if not exist)
+              cmd /c "sc stop designated-driving-client 2>nul"
+              cmd /c "sc delete designated-driving-client 2>nul"
+              $global:LASTEXITCODE = 0
+              Start-Sleep -Seconds 3
+
+              # Extract client artifact
+              Write-Host "=== Extracting client artifact to $deployRoot ==="
+              New-Item -ItemType Directory -Force -Path $deployRoot | Out-Null
+              Expand-Archive -Path $clientZip -DestinationPath $deployRoot -Force
+
+              # Register client as a Windows service via NSSM
+              nssm install designated-driving-client "$node" "`"$httpServer`" -p 5000"
+              nssm set designated-driving-client AppDirectory "$deployRoot"
+              nssm set designated-driving-client AppStdout "C:\deploy\logs\client-stdout.log"
+              nssm set designated-driving-client AppStderr "C:\deploy\logs\client-stderr.log"
+              cmd /c "sc start designated-driving-client 2>nul"
+              $global:LASTEXITCODE = 0
+              Start-Sleep -Seconds 8
+
+              $tc = Test-NetConnection -ComputerName localhost -Port 5000
+              if ($tc.TcpTestSucceeded) {
+                Write-Host "=== Client is running on localhost:5000 ==="
+              } else {
+                Write-Error "Client not listening on port 5000"
+                exit 1
+              }
+            displayName: 'Deploy Client'
+
+  # ── Deploy to QAT Env ───────────────────────
+  - stage: DeployQAT
+    displayName: 'Deploy to QAT Environment'
+    dependsOn: DeployDev
+    jobs:
+      - deployment: DeployQAT
+        displayName: 'Deploy to QAT'
+        environment: 'QAT'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - script: |
+                    echo "=== Deploying to QAT Environment ==="
+                    echo "Artifact: $(Pipeline.Workspace)/drop/api-$(Build.BuildId).zip"
+                    echo "Target:   QAT App Service / QAT Server"
+                    # Replace this script block with your actual deploy command
+                  displayName: 'Deploy artifact to QAT environment'
+
+  # ── Deploy to Staging Env ───────────────────
+  - stage: DeployStaging
+    displayName: 'Deploy to Staging Environment'
+    dependsOn: DeployQAT
+    jobs:
+      - deployment: DeployStaging
+        displayName: 'Deploy to Staging'
+        environment: 'Staging'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - script: |
+                    echo "=== Deploying to Staging Environment ==="
+                    echo "Artifact: $(Pipeline.Workspace)/drop/api-$(Build.BuildId).zip"
+                    echo "Target:   Staging App Service / Staging Server"
+                    # Replace this script block with your actual deploy command
+                  displayName: 'Deploy artifact to Staging environment'
+
+  # ── Deploy to Production Env ────────────────
+  - stage: DeployProduction
+    displayName: 'Deploy to Production Environment'
+    dependsOn: DeployStaging
+    jobs:
+      - deployment: DeployProduction
+        displayName: 'Deploy to Production'
+        environment: 'Production'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - script: |
+                    echo "=== Deploying to Production Environment ==="
+                    echo "Artifact: $(Pipeline.Workspace)/drop/api-$(Build.BuildId).zip"
+                    echo "Target:   Production App Service / Production Server"
+                    # Replace this script block with your actual deploy command
+                  displayName: 'Deploy artifact to Production environment'

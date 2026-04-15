@@ -1,0 +1,205 @@
+import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
+import {
+  apiCreateTrip,
+  //apiDispatchTrip,
+  apiGetOpenTrips,
+  apiAcceptTrip,
+  apiGetMyTrips,
+  apiGetTripById,
+  apiArriveTrip,
+  apiStartTrip,
+  apiCompleteTrip,
+  apiCancelTrip,
+} from "../../api/client";
+import { getErrorMessage } from "../../utils/errors";
+
+export const createTrip = createAsyncThunk("trips/create", async (payload, thunkAPI) => {
+  try {
+    const { data } = await apiCreateTrip(payload);
+    return data.trip;
+  } catch (err) {
+    return thunkAPI.rejectWithValue(getErrorMessage(err));
+  }
+});
+
+// export const dispatchTrip = createAsyncThunk("trips/dispatch", async (tripId, thunkAPI) => {
+//   try {
+//     const { data } = await apiDispatchTrip(tripId);
+//     return data.trip;
+//   } catch (err) {
+//     return thunkAPI.rejectWithValue(getErrorMessage(err));
+//   }
+// });
+
+
+
+export const fetchOpenTrips = createAsyncThunk(
+  "trips/fetchOpen",
+  async (_, thunkAPI) => {
+    try {
+      const { data } = await apiGetOpenTrips();
+      return data.trips ?? [];
+    } catch (err) {
+      return thunkAPI.rejectWithValue(getErrorMessage(err));
+    }
+  }
+);
+
+export const acceptTrip = createAsyncThunk(
+  "trips/accept",
+  async (tripId, thunkAPI) => {
+    try {
+      const { data } = await apiAcceptTrip(tripId);
+      return { trip: data.trip, driverProfile: data.driverProfile };
+    } catch (err) {
+      return thunkAPI.rejectWithValue(getErrorMessage(err));
+    }
+  }
+);
+
+export const fetchTripById = createAsyncThunk("trips/fetchById", async (tripId, thunkAPI) => {
+  try {
+    const { data } = await apiGetTripById(tripId);
+    return data.trip;
+  } catch (err) {
+    return thunkAPI.rejectWithValue(getErrorMessage(err));
+  }
+});
+
+export const fetchMyTrips = createAsyncThunk("trips/fetchMine", async (_, thunkAPI) => {
+  try {
+    const { data } = await apiGetMyTrips();
+    return data.trips ?? [];
+  } catch (err) {
+    return thunkAPI.rejectWithValue(getErrorMessage(err));
+  }
+});
+
+// Phase 4 — driver lifecycle
+export const arriveTrip = createAsyncThunk("trips/arrive", async (tripId, thunkAPI) => {
+  try {
+    const { data } = await apiArriveTrip(tripId);
+    return data.trip;
+  } catch (err) {
+    return thunkAPI.rejectWithValue(getErrorMessage(err));
+  }
+});
+
+export const startTrip = createAsyncThunk("trips/start", async (tripId, thunkAPI) => {
+  try {
+    const { data } = await apiStartTrip(tripId);
+    return data.trip;
+  } catch (err) {
+    return thunkAPI.rejectWithValue(getErrorMessage(err));
+  }
+});
+
+export const completeTrip = createAsyncThunk("trips/complete", async (tripId, thunkAPI) => {
+  try {
+    const { data } = await apiCompleteTrip(tripId);
+    return data.trip;
+  } catch (err) {
+    return thunkAPI.rejectWithValue(getErrorMessage(err));
+  }
+});
+
+export const cancelTrip = createAsyncThunk("trips/cancel", async (tripId, thunkAPI) => {
+  try {
+    const { data } = await apiCancelTrip(tripId);
+    return data.trip;
+  } catch (err) {
+    return thunkAPI.rejectWithValue(getErrorMessage(err));
+  }
+});
+
+const tripsSlice = createSlice({
+  name: "trips",
+  initialState: {
+    current: null,
+    mine: [],
+    open: [],
+    loading: false,
+    polling: false,
+    error: null,
+  },
+  reducers: {
+    clearTripsError(state) {
+      state.error = null;
+    },
+    clearCurrentTrip(state) {
+      state.current = null;
+    },
+  },
+  extraReducers: (builder) => {
+    builder
+      // create trip
+      .addCase(createTrip.pending, (s) => { s.loading = true; s.error = null; })
+      .addCase(createTrip.fulfilled, (s, a) => { s.loading = false; s.current = a.payload; })
+      .addCase(createTrip.rejected, (s, a) => { s.loading = false; s.error = a.payload || "Failed to create trip"; })
+
+      // dispatch
+      // .addCase(dispatchTrip.pending, (s) => { s.loading = true; s.error = null; })
+      // .addCase(dispatchTrip.fulfilled, (s, a) => { s.loading = false; s.current = a.payload; })
+      // .addCase(dispatchTrip.rejected, (s, a) => { s.loading = false; s.error = a.payload || "Failed to dispatch trip"; })
+
+      // fetch by id (background poll — does not touch loading)
+      .addCase(fetchTripById.pending, (s) => { s.polling = true; })
+      .addCase(fetchTripById.fulfilled, (s, a) => { s.polling = false; s.current = a.payload; })
+      .addCase(fetchTripById.rejected, (s, a) => { s.polling = false; s.error = a.payload || "Failed to fetch trip"; })
+
+      // history
+      .addCase(fetchMyTrips.pending, (s) => { s.loading = true; s.error = null; })
+      .addCase(fetchMyTrips.fulfilled, (s, a) => { s.loading = false; s.mine = a.payload; })
+      .addCase(fetchMyTrips.rejected, (s, a) => { s.loading = false; s.error = a.payload || "Failed to load trip history"; })
+
+      // arrive
+      .addCase(arriveTrip.pending, (s) => { s.loading = true; s.error = null; })
+      .addCase(arriveTrip.fulfilled, (s, a) => { s.loading = false; s.current = a.payload; })
+      .addCase(arriveTrip.rejected, (s, a) => { s.loading = false; s.error = a.payload || "Failed to arrive"; })
+
+      // start
+      .addCase(startTrip.pending, (s) => { s.loading = true; s.error = null; })
+      .addCase(startTrip.fulfilled, (s, a) => { s.loading = false; s.current = a.payload; })
+      .addCase(startTrip.rejected, (s, a) => { s.loading = false; s.error = a.payload || "Failed to start"; })
+
+
+      // complete
+      .addCase(completeTrip.pending, (s) => { s.loading = true; s.error = null; })
+      .addCase(completeTrip.fulfilled, (s, a) => { s.loading = false; s.current = a.payload; })
+      .addCase(completeTrip.rejected, (s, a) => { s.loading = false; s.error = a.payload || "Failed to complete"; })
+
+      // cancel (driver releases trip back to open pool)
+      .addCase(cancelTrip.pending, (s) => { s.loading = true; s.error = null; })
+      .addCase(cancelTrip.fulfilled, (s) => { s.loading = false; s.current = null; })
+      .addCase(cancelTrip.rejected, (s, a) => { s.loading = false; s.error = a.payload || "Failed to cancel"; })
+
+      // fetch open trips
+      .addCase(fetchOpenTrips.pending, (s) => {
+        s.loading = true;
+        s.error = null;
+      })
+      .addCase(fetchOpenTrips.fulfilled, (s, a) => {
+        s.loading = false;
+        s.open = a.payload;
+      })
+      .addCase(fetchOpenTrips.rejected, (s, a) => {
+        s.loading = false;
+        s.error = a.payload || "Failed to load open trips";
+      })
+
+      // accept trip
+      .addCase(acceptTrip.pending, (s) => { s.loading = true; s.error = null; })
+      .addCase(acceptTrip.fulfilled, (s, a) => {
+        s.loading = false;
+        s.current = a.payload.trip;
+        s.open = s.open.filter(t => t._id !== a.payload.trip._id);
+      })
+      .addCase(acceptTrip.rejected, (s, a) => {
+        s.loading = false;
+        s.error = a.payload || "Failed to accept trip";
+      });
+  },
+});
+
+export const { clearTripsError, clearCurrentTrip } = tripsSlice.actions;
+export default tripsSlice.reducer;
