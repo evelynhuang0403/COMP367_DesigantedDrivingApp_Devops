@@ -22,7 +22,7 @@ stages:
             inputs:
               SonarCloud: 'SonarCloudServiceConnection'
               organization: 'evelynhuang0403'
-              projectKey: 'evelynhuang0403_COMP313_DesigantedDrivingApp_Devops'
+              projectKey: 'evelynhuang0403_COMP367_DesigantedDrivingApp_Devops'
               scannerMode: 'CLI'
               configMode: 'file'
           - task: SonarCloudAnalyze@4
