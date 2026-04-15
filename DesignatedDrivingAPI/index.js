@@ -62,15 +62,21 @@ const port = process.env.PORT || 3000;
 server.get("/api/status", (_req, res) => {
   res.status(200).json({
     success: true,
-    message: "Designated Driving Server is running",
+    message: "Designated Driving Server is online and ready",
+    timestamp: new Date().toISOString(),
   });
 });
 
 server.get("/api/health", (_req, res) => {
+  const memUsage = process.memoryUsage();
   res.status(200).json({
     status: "healthy",
     uptime: process.uptime(),
-    memory: process.memoryUsage(),
+    memory: {
+      rss: memUsage.rss,
+      heapUsed: memUsage.heapUsed,
+      heapTotal: memUsage.heapTotal,
+    },
     timestamp: new Date().toISOString(),
   });
 });
@@ -83,10 +89,17 @@ server.get("/api/version", (_req, res) => {
   });
 });
 
+const shutdown = () => {
+  console.log("Server shutting down...");
+  process.exit(0);
+};
+process.on("SIGTERM", shutdown);
+process.on("SIGINT", shutdown);
+
 server.listen(port, async () => {
   try {
     await connectDB();
-    console.log("Server is listening on port " + port);
+    console.log(`Server is listening on port ${port}`);
   } catch (error) {
     console.log(`Error in index.js: ${error}`);
   }
