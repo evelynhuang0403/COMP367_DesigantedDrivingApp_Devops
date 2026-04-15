@@ -45,7 +45,8 @@ if (!fs.existsSync(uploadsDir)) {
 server.use("/uploads", express.static("uploads"));
 
 server.use(express.json());
-server.use("/api/estimates", estimateRoutes); 
+server.use("/api/auth", authRoutes);
+server.use("/api/estimates", estimateRoutes);
 server.use("/api/trips", tripRoutes);
 server.use("/api/vehicles", vehicleRoutes);
 server.use("/api/driver-profiles", driverProfileRoutes);
@@ -57,9 +58,6 @@ server.use("/api/saved-locations", savedLocationRoutes);
 server.use("/api/trips", incidentRoutes);
 
 const port = process.env.PORT || 3000;
-
-
-server.use("/api/auth", authRoutes);
 
 server.get("/api/status", (_req, res) => {
   res.status(200).json({
